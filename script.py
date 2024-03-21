@@ -35,8 +35,8 @@ def create_qval_log_mtx(qval_df, end_bin):
     return log_qval
 
 
-def get_dots_coords(qval_log_mtx):
-    values = np.where((~np.isneginf(qval_log_mtx)) & (qval_log_mtx != 0) & (qval_log_mtx<=np.log10(0.01)))
+def get_dots_coords(qval_log_mtx, qval_threshold = 0.01):
+    values = np.where((~np.isneginf(qval_log_mtx)) & (qval_log_mtx != 0) & (qval_log_mtx<=np.log10(qval_threshold)))
     coords = pd.DataFrame()
     for i, j in zip(values[0], values[1]):
         new_row = [i, j, qval_log_mtx[i, j]]
@@ -54,12 +54,12 @@ def draw_dots(coordinates):
     plt.show()
 
 
-def main_func(path_to_matrix, resolution, genome_position, end_bin, quantile_threshold = 0.9, fdr_correction = 0.5):
-    qval_dataframe = get_qvalues(path_to_matrix, resolution, genome_position, end_bin)
+def main_func(path_to_matrix, resolution, genome_position, end_bin, quantile_threshold = 0.9, fdr_correction = 0.5, qval_threshold = 0.01):
+    qval_dataframe = get_qvalues(path_to_matrix, resolution, genome_position, end_bin, quantile_threshold, fdr_correction)
     np.seterr(divide='ignore')
     log_matrix = create_qval_log_mtx(qval_dataframe, end_bin)
-    sign_dots = get_dots_coords(log_matrix)
-    draw_dots(sign_dots)
+    sign_dots = get_dots_coords(log_matrix, qval_threshold)
+    #draw_dots(sign_dots)
     return sign_dots
 
     #fig = plt.figure(figsize=(7, 7))
