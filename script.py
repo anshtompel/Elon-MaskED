@@ -35,12 +35,18 @@ def create_qval_log_mtx(qval_df, end_bin):
     return log_qval
 
 
-def get_dots_coords(qval_log_mtx, qval_threshold = 0.01):
+def get_dots_coords(qval_log_mtx, genome_position, qval_threshold = 0.01):
     values = np.where((~np.isneginf(qval_log_mtx)) & (qval_log_mtx != 0) & (qval_log_mtx<=np.log10(qval_threshold)))
     coords = pd.DataFrame()
     for i, j in zip(values[0], values[1]):
         new_row = [i, j, qval_log_mtx[i, j]]
         coords = pd.concat([coords, pd.DataFrame([new_row])], ignore_index=True)
+    col_names = ['start', 'end', 'qval']
+    coords = coords.set_axis(col_names, axis=1)
+    genome_position = genome_position
+    chrom_name = genome_position if ':' not in genome_position else genome_position.split(':')[0]
+    coords.insert(0,'chrom','')
+    coords['chrom'] = chrom_name
     return coords
     
 def draw_dots(coordinates):
@@ -58,7 +64,7 @@ def main_func(path_to_matrix, resolution, genome_position, end_bin, quantile_thr
     qval_dataframe = get_qvalues(path_to_matrix, resolution, genome_position, end_bin, quantile_threshold, fdr_correction)
     np.seterr(divide='ignore')
     log_matrix = create_qval_log_mtx(qval_dataframe, end_bin)
-    sign_dots = get_dots_coords(log_matrix, qval_threshold)
+    sign_dots = get_dots_coords(log_matrix, genome_position, qval_threshold)
     #draw_dots(sign_dots)
     return sign_dots
 
