@@ -56,16 +56,19 @@ def dbscan_clustering(coordinates, eps, min_samples, genome_position, resolution
     cluster_labels_all_db = clusterer.fit_predict(coor)
     coor['dbscan'] = cluster_labels_all_db
     coor_dbscan = coor.query('dbscan != -1')
-    loops_coords_bed = pd.DataFrame()
+    loops_coords_bedpe = pd.DataFrame()
     labels = coor_dbscan['dbscan'].unique()
     for i in labels:
         new_row = round(coor_dbscan.query('dbscan == @i')[{'start', 'end'}].apply(np.mean, axis=0)).astype(int)
-        loops_coords_bed = pd.concat([loops_coords_bed, pd.DataFrame([new_row])], ignore_index=True)
+        loops_coords_bedpe = pd.concat([loops_coords_bedpe, pd.DataFrame([new_row])], ignore_index=True)
     chrom_name = genome_position if ':' not in genome_position else genome_position.split(':')[0]
-    loops_coords_bed.insert(0,'chrom','')
-    loops_coords_bed['chrom'] = chrom_name
-    loops_coords_bed[['start', 'end']] = loops_coords_bed[['start', 'end']].apply(lambda x: x * resolution)
-    return loops_coords_bed
+    loops_coords_bedpe['chrom1'] = chrom_name
+    loops_coords_bedpe[['start1', 'start2']] = loops_coords_bedpe[['start', 'end']].apply(lambda x: (x - 1) * resolution)
+    loops_coords_bedpe['chrom2'] = chrom_name
+    loops_coords_bedpe[['end1', 'end2']] = loops_coords_bedpe[['start', 'end']].apply(lambda x: (x + 1) * resolution)
+    loops_coords_bedpe = loops_coords_bedpe.drop(['start', 'end'], axis=1)
+    loops_coords_bedpe = loops_coords_bedpe.query('start1 >= 300000')
+    return loops_coords_bedpe
 
 
 def optics_clusterig(coordinates, min_samples, max_eps, genome_position, resolution):
@@ -74,24 +77,36 @@ def optics_clusterig(coordinates, min_samples, max_eps, genome_position, resolut
     optics_pred = optics.fit_predict(coor)
     coor['optics'] = optics_pred
     coor_optics = coor.query('optics != -1')
-    loops_coords_bed = pd.DataFrame()
+    loops_coords_bedpe = pd.DataFrame()
     optics_labels = coor_optics['optics'].unique()
     for i in optics_labels:
         new_row = round(coor_optics.query('optics == @i')[{'start', 'end'}].apply(np.mean, axis=0)).astype(int)
-        loops_coords_bed = pd.concat([loops_coords_bed, pd.DataFrame([new_row])], ignore_index=True)
+        loops_coords_bedpe = pd.concat([loops_coords_bedpe, pd.DataFrame([new_row])], ignore_index=True)
     chrom_name = genome_position if ':' not in genome_position else genome_position.split(':')[0]
-    loops_coords_bed.insert(0,'chrom','')
-    loops_coords_bed['chrom'] = chrom_name
-    loops_coords_bed[['start', 'end']] = loops_coords_bed[['start', 'end']].apply(lambda x: x * resolution)
-    return loops_coords_bed
+    loops_coords_bedpe['chrom1'] = chrom_name
+    loops_coords_bedpe[['start1', 'start2']] = loops_coords_bedpe[['start', 'end']].apply(lambda x: (x - 1) * resolution)
+    loops_coords_bedpe['chrom2'] = chrom_name
+    loops_coords_bedpe[['end1', 'end2']] = loops_coords_bedpe[['start', 'end']].apply(lambda x: (x + 1) * resolution)
+    loops_coords_bedpe = loops_coords_bedpe.drop(['start', 'end'], axis=1)
+    loops_coords_bedpe = loops_coords_bedpe.query('start1 >= 300000')
+    return loops_coords_bedpe
     
 
-def pileup_dots(looop_genome_coords, path_to_matrix, resolution):
+def pileup_dots(loop_coords, path_to_matrix, resolution):
     mtx_name_for_cooler = path_to_matrix + '::/resolutions/' + str(resolution)
     hic = cooler.Cooler(mtx_name_for_cooler)
-    expected = cooltools.expected_cis(hic, ignore_diags=0, chunksize=1000000)
-    puppy = coolpup.pileup(hic, looop_genome_coords, features_format='bed', expected_df=expected, local=True, nshifts=10, flank=30_000, min_diag=0)
-    pile_loops = plotpup.plot(puppy,score=False, cmap='coolwarm', scale='log', sym=True, vmax=2,height=5, plot_ticks=True)
+    sizes = hic.chromsizes
+    sizes = sizes.to_frame()
+    sizes = sizes.reset_index()
+    view = pd.DataFrame()
+    view['chrom'] = sizes['name']
+    view['start'] = 0
+    view['end'] = sizes['length']
+    view['name'] = sizes['name']
+    expected = cooltools.expected_cis(hic, chunksize=1000000, view_df=view)
+    puppy = coolpup.pileup(clr=hic, features=loop_coords, view_df=view, features_format='bedpe', expected_df=expected, 
+                            nshifts=1000, flank=12000)
+    pile_loops = plotpup.plot(puppy, score=True, cmap='coolwarm', scale='log', sym=True, vmax=2,height=5, plot_ticks=False)
     return pile_loops
 
 
@@ -105,4 +120,4 @@ def main_func(path_to_matrix, resolution, genome_position, end_bin, cluster_meth
     elif cluster_method == 'optics':
         loops_genome_coords = optics_clusterig(sign_dots, min_samples, max_eps, genome_position, resolution)
     draw_average_loops = pileup_dots(loops_genome_coords, path_to_matrix, resolution)
-    return draw_average_loops, loops_genome_coords
+    return draw_average_loops
