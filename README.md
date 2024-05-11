@@ -1,1 +1,2 @@
-# BI_caller_project
+# El pool
+>Caller for elongated loops on Hi-C contact maps.
