@@ -138,32 +138,6 @@ def create_mask(puppy, elong):
         pp = np.pad(pp, [(3, ), (3, )], mode='constant')
     return pp
 
-def count_mask_vs_loop_corelation(pp, coords, log_mtx):
-    """
-    """
-    dict_for_coeffs = {}
-    threshold = 0.5
-    for i in range(len(coords)):
-        coordinates_dots = coords.iloc[i][['start1', 'start2', 'end1', 'end2']].apply(lambda x: x //2000)
-        start_1, start_2, end_1, end_2 = [j for j in coordinates_dots]
-        mtx = log_mtx[start_1:end_1, start_2:end_2]
-        if mtx.shape != pp.shape:
-            continue
-        mtx = np.nan_to_num(mtx, neginf=0) 
-        v1 = (mtx).flatten()
-        v2 = (pp).flatten()
-        coeff = scipy.stats.spearmanr(v1, v2)[0]
-        if coeff >= threshold:
-            dict_for_coeffs[i] = scipy.stats.spearmanr(v1, v2)[0]
-    coords_elog = pd.DataFrame()
-    for i in dict_for_coeffs:
-        row = list(coords.iloc[i])
-        row = pd.DataFrame([row])
-        coords_elog = pd.concat([coords_elog, row])
-    col_names = ['chrom1', 'start1', 'start2', 'chrom2', 'end1', 'end2']
-    coords_elog = coords_elog.set_axis(col_names, axis=1)
-    return coords_elog
-
 
 def run_elong_loop_caller(path_to_matrix, resolution, genome_position, end_bin, start_bin=1, quantile_threshold = 0.9, fdr_correction = 0.5, qval_threshold = 0.01, min_samples = 3, max_eps=1.5, elong='left'):
     """
@@ -174,6 +148,4 @@ def run_elong_loop_caller(path_to_matrix, resolution, genome_position, end_bin, 
     loops_genome_coords = optics_clusterig(sign_dots, min_samples, max_eps, genome_position, resolution)
     puppy_data = pileup_dots(loops_genome_coords, path_to_matrix, resolution)
     mask = create_mask(puppy_data, elong)
-    elong_loop_df = count_mask_vs_loop_corelation(mask, loops_genome_coords, log_matrix)
-    elong_pileup = pileup_dots(elong_loop_df, path_to_matrix, resolution, visualization=True)
-    return elong_loop_df
+    return mask
