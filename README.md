@@ -1,2 +1,2 @@
-# El pool
->Caller for elongated loops on Hi-C contact maps.
+# Elon MaskED
+>Elongated Mask-based Enrichment Detector.
