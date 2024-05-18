@@ -1,5 +1,7 @@
 import os
 import warnings
+import time
+import logging
 
 import cooler
 import cooltools
@@ -12,10 +14,11 @@ from coolpuppy import coolpup, plotpup
 from sklearn.cluster import OPTICS
 from typing import Union
 
-warnings.simplefilter(action='ignore')
-np.seterr(divide='ignore')
+warnings.simplefilter(action = 'ignore')
+np.seterr(divide = 'ignore')
+logger = logging.getLogger('Elon_MaskED')
 
-def get_qvalues(path_to_matrix: str, resolution: int, genome_position: str, start_bin: int, end_bin: int, 
+def get_qvalues(path_to_matrix: str, resolution: int, genome_position: str, end_bin: int, start_bin: int,
                 quantile_threshold: float, fdr_correction: float) -> pd.DataFrame:
     """
     Calculates Weibull distribution q-values for each pixel in region of interest from diagonal k (start bin) to n (end bin)
@@ -45,7 +48,8 @@ def get_qvalues(path_to_matrix: str, resolution: int, genome_position: str, star
         diag_pval = 1 - (scipy.stats.weibull_min.cdf(diag, c = weibull_param[0],loc = weibull_param[1], scale = weibull_param[2]))
         diag_pval = statsmodels.stats.multitest.fdrcorrection(diag_pval, alpha = fdr_correction)[1]
         q_values = pd.concat([q_values, pd.DataFrame([diag_pval])], ignore_index = True, axis = 0)
-    return q_values.T
+    q_values = q_values.T
+    return q_values
 
 
 def create_qval_log_mtx(qval_df: pd.DataFrame, end_bin: int) -> np.array:
@@ -138,6 +142,7 @@ def pileup_dots(loop_coords: pd.DataFrame, path_to_matrix: str, resolution: int,
     Ouput:
     pd.DataFrame with results of coolpuppy run
     """
+    logger.info('Run pileup')
     mtx_name_for_cooler = path_to_matrix + '::/resolutions/' + str(resolution)
     hic = cooler.Cooler(mtx_name_for_cooler)
     sizes = hic.chromsizes
@@ -286,6 +291,8 @@ def run_elong_loop_caller(path_to_matrix: str, resolution: int, genome_position:
     Output:
     Function saves bedpe file with coordinates and pileup figures.
     """
+    start_time = time.perf_counter()
+    logger.info('Start Elon MaskED')
     qval_dataframe = get_qvalues(path_to_matrix, resolution, genome_position, end_bin, start_bin, 
                                  quantile_threshold, fdr_correction)
     log_matrix = create_qval_log_mtx(qval_dataframe, end_bin)
@@ -295,5 +302,8 @@ def run_elong_loop_caller(path_to_matrix: str, resolution: int, genome_position:
     mask = create_mask(puppy_data, elong)
     elong_loop_df = count_mask_vs_loop_corelation(mask, loops_genome_coords, log_matrix)
     pileup_dots(elong_loop_df, path_to_matrix, resolution, elong, visualization=True)
+    logger.info('Saving results')
     write_bedpe(elong_loop_df, elong, path_to_matrix, genome_position)
-    return 'Done!'
+    end_time = time.perf_counter()
+    logger.info(f'Done! Running time is {(end_time - start_time):.02f} sec')
+    return None
