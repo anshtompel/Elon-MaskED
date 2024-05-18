@@ -15,12 +15,26 @@ from typing import Union
 warnings.simplefilter(action='ignore')
 np.seterr(divide='ignore')
 
-def get_qvalues(path_to_matrix: str, resolution: int, genome_position: str, end_bin: int, start_bin: int, quantile_threshold: float, fdr_correction: float) -> pd.DataFrame:
+def get_qvalues(path_to_matrix: str, resolution: int, genome_position: str, start_bin: int, end_bin: int, 
+                quantile_threshold: float, fdr_correction: float) -> pd.DataFrame:
     """
+    Calculates Weibull distribution q-values for each pixel in region of interest from diagonal k (start bin) to n (end bin)
+
+    Input arguments:
+    - path_to_matrix (str): path to mcool/cool HiC matrix
+    - resolution (int): resolution of HiC matrix
+    - genome_position (str): chromosome or specific genome region in UCSC format i.g. chr3:10000-20000
+    - start bin (int): left boudary of region of interest, the higher the value, the further away from the main diagonal
+    - end bin (int): right boudary of region of interest 
+    - quantile_threshold (float): the threshold for filtering out the bright outlier pixels
+    - fdr_correction (float): significants threshold to correct for multiple comparisons
+
+    Output:
+    pd.DataFrame with q-values for each pixel in region of interest
     """
     mtx_name_for_cooler = path_to_matrix + '::/resolutions/' + str(resolution)
     balanced_matrix = cooler.Cooler(mtx_name_for_cooler).matrix(balance=True, sparse=False).fetch(genome_position)
-    compare_dataframe = pd.DataFrame()
+    q_values = pd.DataFrame()
     for i in range(start_bin, end_bin):
         diag = np.diag(balanced_matrix, k = i)
         diag_nan_omit = diag[~np.isnan(diag)]
@@ -30,12 +44,20 @@ def get_qvalues(path_to_matrix: str, resolution: int, genome_position: str, end_
         diag = np.nan_to_num(diag, nan = 0)
         diag_pval = 1 - (scipy.stats.weibull_min.cdf(diag, c = weibull_param[0],loc = weibull_param[1], scale = weibull_param[2]))
         diag_pval = statsmodels.stats.multitest.fdrcorrection(diag_pval, alpha = fdr_correction)[1]
-        compare_dataframe = pd.concat([compare_dataframe, pd.DataFrame([diag_pval])], ignore_index = True, axis = 0)
-    return compare_dataframe.T
+        q_values = pd.concat([q_values, pd.DataFrame([diag_pval])], ignore_index = True, axis = 0)
+    return q_values.T
 
 
 def create_qval_log_mtx(qval_df: pd.DataFrame, end_bin: int) -> np.array:
     """
+    Converts q values dataframe to logarithmic scale
+
+    Input arguments:
+    - qval_df (pd.DataFrame): q values data about each pixel
+    - end bin (int): right boudary of region of interest 
+
+    Output:
+    np.array with log q values
     """
     temp_mtx = np.zeros((qval_df.shape[0] + 1, qval_df.shape[0] + 1))
     for i in range(1, end_bin):
@@ -47,6 +69,14 @@ def create_qval_log_mtx(qval_df: pd.DataFrame, end_bin: int) -> np.array:
 
 def get_dots_coords(qval_log_mtx: np.array, qval_threshold: float) -> pd.DataFrame:
     """
+    Filters out log q values and get bin coordinates.
+
+    Input arguments:
+    - qval_log_mtx (np.array): q values for each pixel in logarithmic scale
+    - qval_threshold (float): threshold to filter q values, the higher the softer the threshold value
+
+    Output:
+    pd.DataFrame with bin coordinates
     """
     values = np.where((~np.isneginf(qval_log_mtx)) & (qval_log_mtx != 0) & (qval_log_mtx<=np.log10(qval_threshold)))
     coords = pd.DataFrame()
@@ -58,8 +88,20 @@ def get_dots_coords(qval_log_mtx: np.array, qval_threshold: float) -> pd.DataFra
     return coords
 
 
-def optics_clusterig(coordinates: pd.DataFrame, min_samples: int, max_eps: float, genome_position: str, resolution: int) -> pd.DataFrame:
+def optics_clustering(coordinates: pd.DataFrame, min_samples: int, max_eps: float, 
+                     genome_position: str, resolution: int) -> pd.DataFrame:
     """
+    Clusters filtered pixels using OPTICS algorithm
+
+    Input arguments:
+    - coordinates (pd.DataFrame): pd.DataFrame with bin coordinates for each log q value
+    - min_samples (int): number of samples in a neighborhood for a pixel
+    - max_eps (float): maximum distance between two samples for one
+    - genome_position (str): chromosome or specific genome region in UCSC format i.g. chr3:10000-20000
+    - resolution (int): resolution of HiC matrix
+
+    Output:
+    pd.DataFrame in bedpe-like format with centroid coordinated of each defined cluster
     """
     coor = coordinates[['start', 'end']]
     optics = OPTICS(min_samples = min_samples, max_eps = max_eps)
@@ -81,8 +123,20 @@ def optics_clusterig(coordinates: pd.DataFrame, min_samples: int, max_eps: float
     return loops_coords_bedpe
     
 
-def pileup_dots(loop_coords, path_to_matrix, resolution, elong, visualization = False):
+def pileup_dots(loop_coords: pd.DataFrame, path_to_matrix: str, resolution: int, elong: Union[str | None], 
+                visualization: bool = False) -> pd.DataFrame:
     """ 
+    Creates pileup of dots ("mean loop") with coolpuppy, creates pileup figure
+
+    Input arguments:
+    - loop_coords (pd.DataFrame): bedpe-like format with centroid coordinated of each defined cluster
+    - path_to_matrix (str): path to mcool/cool HiC matrix
+    - resolution (int): resolution of HiC matrix
+    - elong (str or None): loop orientation: left or right, None for all type of loops
+    - visualization (bool): if True pileup figure will be created
+
+    Ouput:
+    pd.DataFrame with results of coolpuppy run
     """
     mtx_name_for_cooler = path_to_matrix + '::/resolutions/' + str(resolution)
     hic = cooler.Cooler(mtx_name_for_cooler)
@@ -98,13 +152,23 @@ def pileup_dots(loop_coords, path_to_matrix, resolution, elong, visualization = 
     puppy = coolpup.pileup(clr = hic, features = loop_coords, view_df = view, features_format = 'bedpe', expected_df = expected, 
                             nshifts = 100000, flank = 8500)
     if visualization:
-        pile_loops = plotpup.plot(puppy, score = True, cmap = 'coolwarm', scale = 'log', sym = True, vmax = 2.1, height = 5, plot_ticks = True)
+        pile_loops = plotpup.plot(puppy, score = True, cmap = 'coolwarm', scale = 'log', sym = True, 
+                                  vmax = 2.1, height = 5, plot_ticks = True)
         pile_loops.savefig(f'pileup_{elong}.pdf', bbox_inches='tight')
+        plt.close(pile_loops.fig)
     return puppy
 
 
 def create_mask(puppy: pd.DataFrame, elong: Union[str | None]) -> np.array:
     """
+    Creates mask for loop searching, elongated or summetrical
+
+    Input arguments:
+    - puppy (pd.DataFrame): results of coolpuppy run
+    - elong (str or None): loop orientation: left or right, None for all type of loops
+
+    Output:
+    np.array - mask for loop searching
     """
     puppy = puppy.data[0]
     peak = puppy.max()
@@ -143,6 +207,15 @@ def create_mask(puppy: pd.DataFrame, elong: Union[str | None]) -> np.array:
 
 def count_mask_vs_loop_corelation(pp_mask: np.array, coords: pd.DataFrame, log_mtx: np.array) -> pd.DataFrame:
     """
+    Counts Spearmann correlation between potential loop and mask
+
+    Input arguments:
+    - pp_mask (np.array): mask for loop searching
+    - coords (pd.DataFrame): bedpe-like format with centroid coordinated of each defined cluster
+    - log_mtx (np.array): log q values
+
+    Output:
+    pd.DataFrame in bedpe-like format with filtered loop coordinates
     """
     dict_for_coeffs = {}
     threshold = 0.5
@@ -168,7 +241,19 @@ def count_mask_vs_loop_corelation(pp_mask: np.array, coords: pd.DataFrame, log_m
     return coords_elog
 
 
-def write_bedpe(coords_elog, elong, path, genome_position, path_to_save = None):
+def write_bedpe(coords_elog: pd.DataFrame, elong: Union[str | None], path: str, genome_position: str) -> None:
+    """
+    Save bedpe file with loop coordinates in working directory
+
+    Input arguments:
+    - coords_elog (pd.DataFrame): bedpe-like format with filtered loop coordinates
+    - elong (str or None): loop orientation: left or right, None for all type of loops
+    - path (str): path to mcool/cool HiC matrix
+    - genome_position (str): chromosome or specific genome region in UCSC format i.g. chr3:10000-20000
+
+    Output:
+    Save bedpe file, return None
+    """
     coords_elog.name = None
     path_name = os.path.basename(path).split('.')[0]
     file_name = path_name + f'_{genome_position}_orient_{elong}.bedpe'
@@ -178,13 +263,34 @@ def write_bedpe(coords_elog, elong, path, genome_position, path_to_save = None):
 
 def run_elong_loop_caller(path_to_matrix: str, resolution: int, genome_position: str, end_bin: int, start_bin: int = 1, 
                           quantile_threshold: float = 0.9, fdr_correction: float = 0.5, qval_threshold: float = 0.01, 
-                          min_samples: int = 3, max_eps: float = 1.5, elong: Union[str|None] = 'left'):
+                          min_samples: int = 3, max_eps: float = 1.5, elong: Union[str | None] = 'left') -> None:
     """
+    Detects elongated loops using mask-based approach. HiC pixel values are filtered out, clustered using OPTICS
+    and extract elongated loops comparing the correlation value between the mask and the loop with the threshold value.
+
+    Arguments:
+    - path_to_matrix (str): path to mcool/cool HiC matrix
+    - resolution (int): resolution of HiC matrix
+    - genome_position (str): chromosome or specific genome region in UCSC format i.g. chr3:10000-20000
+    - start bin (int): left boudary of region of interest, the higher the value, the further away from the main diagonal,
+      default 1
+    - end bin (int): right boudary of region of interest 
+    - quantile_threshold (float): the threshold for filtering out the bright outlier pixels, default 0.9
+    - fdr_correction (float): significants threshold to correct for multiple comparisons, default 0.5
+    - qval_threshold (float): threshold to filter q values, the higher the softer the threshold value, default 0.01
+    - min_samples (int): number of samples in a neighborhood for a point to be considered as a core point, default 3
+    - max_eps (float): the maximum distance between two samples for one to be considered as in the neighborhood of the other,
+      default 1.5
+    - (str or None): loop orientation: left or right, None for all type of loops
+
+    Output:
+    Function saves bedpe file with coordinates and pileup figures.
     """
-    qval_dataframe = get_qvalues(path_to_matrix, resolution, genome_position, end_bin, start_bin, quantile_threshold, fdr_correction)
+    qval_dataframe = get_qvalues(path_to_matrix, resolution, genome_position, end_bin, start_bin, 
+                                 quantile_threshold, fdr_correction)
     log_matrix = create_qval_log_mtx(qval_dataframe, end_bin)
     sign_dots = get_dots_coords(log_matrix, qval_threshold)
-    loops_genome_coords = optics_clusterig(sign_dots, min_samples, max_eps, genome_position, resolution)
+    loops_genome_coords = optics_clustering(sign_dots, min_samples, max_eps, genome_position, resolution)
     puppy_data = pileup_dots(loops_genome_coords, path_to_matrix, resolution, elong)
     mask = create_mask(puppy_data, elong)
     elong_loop_df = count_mask_vs_loop_corelation(mask, loops_genome_coords, log_matrix)
