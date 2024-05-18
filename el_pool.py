@@ -158,7 +158,7 @@ def pileup_dots(loop_coords: pd.DataFrame, path_to_matrix: str, resolution: int,
                             nshifts = 100000, flank = 8500)
     if visualization:
         pile_loops = plotpup.plot(puppy, score = True, cmap = 'coolwarm', scale = 'log', sym = True, 
-                                  vmax = 2.1, height = 5, plot_ticks = True)
+                                  vmax = 3, height = 5, plot_ticks = True)
         pile_loops.savefig(f'pileup_{elong}.pdf', bbox_inches='tight')
         plt.close(pile_loops.fig)
     return puppy
@@ -267,7 +267,7 @@ def write_bedpe(coords_elog: pd.DataFrame, elong: Union[str | None], path: str, 
 
 
 def run_elong_loop_caller(path_to_matrix: str, resolution: int, genome_position: str, end_bin: int, start_bin: int = 1, 
-                          quantile_threshold: float = 0.9, fdr_correction: float = 0.5, qval_threshold: float = 0.01, 
+                          quantile_threshold: float = 0.9, fdr_correction: float = 0.5, qval_threshold: float = 0.1, 
                           min_samples: int = 3, max_eps: float = 1.5, elong: Union[str | None] = 'left') -> None:
     """
     Detects elongated loops using mask-based approach. HiC pixel values are filtered out, clustered using OPTICS
@@ -282,7 +282,7 @@ def run_elong_loop_caller(path_to_matrix: str, resolution: int, genome_position:
     - end bin (int): right boudary of region of interest 
     - quantile_threshold (float): the threshold for filtering out the bright outlier pixels, default 0.9
     - fdr_correction (float): significants threshold to correct for multiple comparisons, default 0.5
-    - qval_threshold (float): threshold to filter q values, the higher the softer the threshold value, default 0.01
+    - qval_threshold (float): threshold to filter q values, the higher the softer the threshold value, default 0.1
     - min_samples (int): number of samples in a neighborhood for a point to be considered as a core point, default 3
     - max_eps (float): the maximum distance between two samples for one to be considered as in the neighborhood of the other,
       default 1.5
