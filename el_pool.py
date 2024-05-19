@@ -127,8 +127,7 @@ def optics_clustering(coordinates: pd.DataFrame, min_samples: int, max_eps: floa
     return loops_coords_bedpe
     
 
-def pileup_dots(loop_coords: pd.DataFrame, path_to_matrix: str, resolution: int, elong: Union[str | None], 
-                visualization: bool = False) -> pd.DataFrame:
+def pileup_dots(loop_coords: pd.DataFrame, path_to_matrix: str, resolution: int, elong: Union[str | None]) -> pd.DataFrame:
     """ 
     Creates pileup of dots ("mean loop") with coolpuppy, creates pileup figure
 
@@ -137,7 +136,6 @@ def pileup_dots(loop_coords: pd.DataFrame, path_to_matrix: str, resolution: int,
     - path_to_matrix (str): path to mcool/cool HiC matrix
     - resolution (int): resolution of HiC matrix
     - elong (str or None): loop orientation: left or right, None for all type of loops
-    - visualization (bool): if True pileup figure will be created
 
     Ouput:
     pd.DataFrame with results of coolpuppy run
@@ -156,11 +154,6 @@ def pileup_dots(loop_coords: pd.DataFrame, path_to_matrix: str, resolution: int,
     expected = cooltools.expected_cis(hic, chunksize = 1000000, view_df = view)
     puppy = coolpup.pileup(clr = hic, features = loop_coords, view_df = view, features_format = 'bedpe', expected_df = expected, 
                             nshifts = 100000, flank = 8500)
-    if visualization:
-        pile_loops = plotpup.plot(puppy, score = True, cmap = 'coolwarm', scale = 'log', sym = True, 
-                                  vmax = 3, height = 5, plot_ticks = True)
-        pile_loops.savefig(f'pileup_{elong}.pdf', bbox_inches='tight')
-        plt.close(pile_loops.fig)
     return puppy
 
 
@@ -210,6 +203,7 @@ def create_mask(puppy: pd.DataFrame, elong: Union[str | None]) -> np.array:
         pp_mask = np.pad(pp_mask, [(3, ), (3, )], mode='constant')
     return pp_mask
 
+
 def count_mask_vs_loop_corelation(pp_mask: np.array, coords: pd.DataFrame, log_mtx: np.array) -> pd.DataFrame:
     """
     Counts Spearmann correlation between potential loop and mask
@@ -244,6 +238,24 @@ def count_mask_vs_loop_corelation(pp_mask: np.array, coords: pd.DataFrame, log_m
     col_names = ['chrom1', 'start1', 'start2', 'chrom2', 'end1', 'end2']
     coords_elog = coords_elog.set_axis(col_names, axis = 1)
     return coords_elog
+
+
+def pileup_visual(puppy: pd.DataFrame, elong: Union[str | None]) -> None:
+    """
+    Saves pileup figures in working directory
+
+    Input arguments:
+    - puppy (pd.DataFrame): result of coolpuppy run with values of mean loop
+    - elong (str or None): loop orientation: left or right, None for all type of loops
+
+    Output:
+    creates figures and saves them in working directory, return None
+    """
+    pile_loops = plotpup.plot(puppy, score = True, cmap = 'coolwarm', scale = 'log', sym = True, 
+                              vmax = 3, height = 5, plot_ticks = True)
+    pile_loops.savefig(f'pileup_{elong}.pdf', bbox_inches='tight')
+    plt.close(pile_loops.fig)
+    return None
 
 
 def write_bedpe(coords_elog: pd.DataFrame, elong: Union[str | None], path: str, genome_position: str) -> None:
@@ -301,8 +313,9 @@ def run_elong_loop_caller(path_to_matrix: str, resolution: int, genome_position:
     puppy_data = pileup_dots(loops_genome_coords, path_to_matrix, resolution, elong)
     mask = create_mask(puppy_data, elong)
     elong_loop_df = count_mask_vs_loop_corelation(mask, loops_genome_coords, log_matrix)
-    pileup_dots(elong_loop_df, path_to_matrix, resolution, elong, visualization=True)
+    puppy_elong = pileup_dots(elong_loop_df, path_to_matrix, resolution, elong, visualization=True)
     logger.info('Saving results')
+    pileup_visual(puppy_elong, elong)
     write_bedpe(elong_loop_df, elong, path_to_matrix, genome_position)
     end_time = time.perf_counter()
     logger.info(f'Done! Running time is {(end_time - start_time):.02f} sec')
