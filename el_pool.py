@@ -93,7 +93,7 @@ def get_dots_coords(qval_log_mtx: np.array, qval_threshold: float) -> pd.DataFra
 
 
 def optics_clustering(coordinates: pd.DataFrame, min_samples: int, max_eps: float, 
-                     genome_position: str, resolution: int) -> pd.DataFrame:
+                     genome_position: str, resolution: int, window_step) -> pd.DataFrame:
     """
     Clusters filtered pixels using OPTICS algorithm
 
@@ -204,22 +204,23 @@ def create_mask(puppy: pd.DataFrame, elong: Union[str | None]) -> np.array:
     return pp_mask
 
 
-def count_mask_vs_loop_corelation(pp_mask: np.array, coords: pd.DataFrame, log_mtx: np.array) -> pd.DataFrame:
+def count_mask_vs_loop_corelation(corr_threshold: float, pp_mask: np.array, coords: pd.DataFrame, log_mtx: np.array, resolution: int) -> pd.DataFrame:
     """
     Counts Spearmann correlation between potential loop and mask
 
     Input arguments:
+    - corr_threshold (float): Spearmann correlation thershold for defining significant loops, default 0.5
     - pp_mask (np.array): mask for loop searching
     - coords (pd.DataFrame): bedpe-like format with centroid coordinated of each defined cluster
     - log_mtx (np.array): log q values
+    - resolution (int): resolution of HiC matrix
 
     Output:
     pd.DataFrame in bedpe-like format with filtered loop coordinates
     """
     dict_for_coeffs = {}
-    threshold = 0.5
     for i in range(len(coords)):
-        coordinates_dots = coords.iloc[i][['start1', 'start2', 'end1', 'end2']].apply(lambda x: x // 2000)
+        coordinates_dots = coords.iloc[i][['start1', 'start2', 'end1', 'end2']].apply(lambda x: x // resolution)
         start_1, start_2, end_1, end_2 = [j for j in coordinates_dots]
         mtx = log_mtx[start_1 : end_1, start_2 : end_2]
         if mtx.shape != pp_mask.shape:
@@ -228,8 +229,10 @@ def count_mask_vs_loop_corelation(pp_mask: np.array, coords: pd.DataFrame, log_m
         candidate_loop = mtx.flatten()
         mask = pp_mask.flatten()
         coeff = scipy.stats.spearmanr(candidate_loop, mask)[0]
-        if coeff >= threshold:
+        if coeff >= corr_threshold:
             dict_for_coeffs[i] = scipy.stats.spearmanr(candidate_loop, mask)[0]
+    if dict_for_coeffs == {}:
+        logger.warning('No loops detected, try another resolution')
     coords_elog = pd.DataFrame()
     for i in dict_for_coeffs:
         row = list(coords.iloc[i])
@@ -278,9 +281,10 @@ def write_bedpe(coords_elog: pd.DataFrame, elong: Union[str | None], path: str, 
     return None
 
 
-def run_elong_loop_caller(path_to_matrix: str, resolution: int, genome_position: str, end_bin: int, start_bin: int = 1, 
-                          quantile_threshold: float = 0.9, fdr_correction: float = 0.5, qval_threshold: float = 0.1, 
-                          min_samples: int = 3, max_eps: float = 1.5, elong: Union[str | None] = 'left') -> None:
+def run_elong_loop_caller(path_to_matrix: str, resolution: int, genome_position: str, end_bin: int, corr_threshold: float = 0.5, 
+                          start_bin: int = 1, quantile_threshold: float = 0.9, fdr_correction: float = 0.5, 
+                          qval_threshold: float = 0.1, min_samples: int = 3, max_eps: float = 1.5, 
+                          elong: Union[str | None] = 'left', window_step: int = 5) -> None:
     """
     Detects elongated loops using mask-based approach. HiC pixel values are filtered out, clustered using OPTICS
     and extract elongated loops comparing the correlation value between the mask and the loop with the threshold value.
@@ -292,13 +296,14 @@ def run_elong_loop_caller(path_to_matrix: str, resolution: int, genome_position:
     - start bin (int): left boudary of region of interest, the higher the value, the further away from the main diagonal,
       default 1
     - end bin (int): right boudary of region of interest 
+    - corr_threshold (float): Spearmann correlation thershold for defining significant loops, default 0.5
     - quantile_threshold (float): the threshold for filtering out the bright outlier pixels, default 0.9
     - fdr_correction (float): significants threshold to correct for multiple comparisons, default 0.5
     - qval_threshold (float): threshold to filter q values, the higher the softer the threshold value, default 0.1
     - min_samples (int): number of samples in a neighborhood for a point to be considered as a core point, default 3
     - max_eps (float): the maximum distance between two samples for one to be considered as in the neighborhood of the other,
       default 1.5
-    - (str or None): loop orientation: left or right, None for all type of loops
+    - elong (str or None): loop orientation: left or right, None for all type of loops
 
     Output:
     Function saves bedpe file with coordinates and pileup figures.
@@ -309,11 +314,11 @@ def run_elong_loop_caller(path_to_matrix: str, resolution: int, genome_position:
                                  quantile_threshold, fdr_correction)
     log_matrix = create_qval_log_mtx(qval_dataframe, end_bin)
     sign_dots = get_dots_coords(log_matrix, qval_threshold)
-    loops_genome_coords = optics_clustering(sign_dots, min_samples, max_eps, genome_position, resolution)
+    loops_genome_coords = optics_clustering(sign_dots, min_samples, max_eps, genome_position, resolution, window_step)
     puppy_data = pileup_dots(loops_genome_coords, path_to_matrix, resolution, elong)
     mask = create_mask(puppy_data, elong)
-    elong_loop_df = count_mask_vs_loop_corelation(mask, loops_genome_coords, log_matrix)
-    puppy_elong = pileup_dots(elong_loop_df, path_to_matrix, resolution, elong, visualization=True)
+    elong_loop_df = count_mask_vs_loop_corelation(corr_threshold, mask, loops_genome_coords, log_matrix, resolution)
+    puppy_elong = pileup_dots(elong_loop_df, path_to_matrix, resolution, elong)
     logger.info('Saving results')
     pileup_visual(puppy_elong, elong)
     write_bedpe(elong_loop_df, elong, path_to_matrix, genome_position)
