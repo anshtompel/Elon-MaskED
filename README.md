@@ -4,6 +4,7 @@
 Elon MaskED is an instrument for searching elongated loops on HiC contact maps. It uses mask and Spearman correlation to filtetr out significant and elongated loops in specific direction.
 
 #### What is elongated loops?
+Chromatin loops represent contacts between distant gene loci e.g. enhancers and promoters. 
 
 <p align="center">
 <img width="60%" src="/imgs/loops_scheme.png">
