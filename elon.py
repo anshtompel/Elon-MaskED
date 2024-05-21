@@ -281,7 +281,7 @@ def write_bedpe(coords_elog: pd.DataFrame, elong: Union[str | None], path: str, 
     return None
 
 
-def run_elong_loop_caller(path_to_matrix: str, resolution: int, genome_position: str, end_bin: int, corr_threshold: float = 0.5, 
+def elon_call(path_to_matrix: str, resolution: int, genome_position: str, end_bin: int, corr_threshold: float = 0.5, 
                           start_bin: int = 1, quantile_threshold: float = 0.9, fdr_correction: float = 0.5, 
                           qval_threshold: float = 0.1, min_samples: int = 3, max_eps: float = 1.5, 
                           elong: Union[str | None] = 'left', window_step: int = 5) -> None:
