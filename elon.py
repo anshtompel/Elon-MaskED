@@ -178,11 +178,11 @@ def create_mask(puppy: pd.DataFrame, elong: Union[str | None]) -> np.array:
     column_iter = column
     while puppy[row_iter][column] > lowest_value and (row_iter < puppy.shape[0] - 1):
         row_iter = row_iter + 1
-    value = puppy[row_iter - 1][column]
+    value = puppy[row_iter][column]
     item_row = np.where(puppy == value)
     while (puppy[row][column_iter] > lowest_value) and (column_iter < puppy.shape[0] - 1):
         column_iter = column_iter + 1
-    value = puppy[row][column_iter - 2]
+    value = puppy[row][column_iter]
     item_column = np.where(puppy == value)
     row_end = item_row[0][0]
     column_end = item_column[1][0]
@@ -243,7 +243,7 @@ def count_mask_vs_loop_corelation(corr_threshold: float, pp_mask: np.array, coor
     return coords_elog
 
 
-def pileup_visual(puppy: pd.DataFrame, elong: Union[str | None]) -> None:
+def pileup_visual(puppy: pd.DataFrame, elong: Union[str | None], fig_contrast) -> None:
     """
     Saves pileup figures in working directory
 
@@ -255,8 +255,8 @@ def pileup_visual(puppy: pd.DataFrame, elong: Union[str | None]) -> None:
     creates figures and saves them in working directory, return None
     """
     pile_loops = plotpup.plot(puppy, score = True, cmap = 'coolwarm', scale = 'log', sym = True, 
-                              vmax = 3, height = 5, plot_ticks = True)
-    pile_loops.savefig(f'pileup_{elong}.pdf', bbox_inches='tight')
+                              vmax = fig_contrast, height = 5, plot_ticks = True)
+    pile_loops.savefig(f'pileup_{elong}.png', dpi=300, bbox_inches='tight')
     plt.close(pile_loops.fig)
     return None
 
@@ -282,9 +282,9 @@ def write_bedpe(coords_elog: pd.DataFrame, elong: Union[str | None], path: str, 
 
 
 def elon_call(path_to_matrix: str, resolution: int, genome_position: str, end_bin: int, corr_threshold: float = 0.5, 
-                          start_bin: int = 1, quantile_threshold: float = 0.9, fdr_correction: float = 0.5, 
+                          start_bin: int = 1, quantile_threshold: float = 0.98, fdr_correction: float = 0.5, 
                           qval_threshold: float = 0.1, min_samples: int = 3, max_eps: float = 1.5, 
-                          elong: Union[str | None] = 'left', window_step: int = 5) -> None:
+                          elong: Union[str | None] = 'left', window_step: int = 5, fig_contrast = 3) -> None:
     """
     Detects elongated loops using mask-based approach. HiC pixel values are filtered out, clustered using OPTICS
     and extract elongated loops comparing the correlation value between the mask and the loop with the threshold value.
@@ -297,7 +297,7 @@ def elon_call(path_to_matrix: str, resolution: int, genome_position: str, end_bi
       default 1
     - end bin (int): right boudary of region of interest 
     - corr_threshold (float): Spearmann correlation thershold for defining significant loops, default 0.5
-    - quantile_threshold (float): the threshold for filtering out the bright outlier pixels, default 0.9
+    - quantile_threshold (float): the threshold for filtering out the bright outlier pixels, default 0.98
     - fdr_correction (float): significants threshold to correct for multiple comparisons, default 0.5
     - qval_threshold (float): threshold to filter q values, the higher the softer the threshold value, default 0.1
     - min_samples (int): number of samples in a neighborhood for a point to be considered as a core point, default 3
@@ -320,7 +320,7 @@ def elon_call(path_to_matrix: str, resolution: int, genome_position: str, end_bi
     elong_loop_df = count_mask_vs_loop_corelation(corr_threshold, mask, loops_genome_coords, log_matrix, resolution)
     puppy_elong = pileup_dots(elong_loop_df, path_to_matrix, resolution, elong)
     logger.info('Saving results')
-    pileup_visual(puppy_elong, elong)
+    pileup_visual(puppy_elong, elong, fig_contrast)
     write_bedpe(elong_loop_df, elong, path_to_matrix, genome_position)
     end_time = time.perf_counter()
     logger.info(f'Done! Running time is {(end_time - start_time):.02f} sec')
