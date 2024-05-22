@@ -57,7 +57,7 @@ Elon MaskED outputs a *.bedpe* file with genome coordinates of detected loops an
 
 Examples of output pileup:
 
-bedpe<p align="center">
+<p align="center">
 <img width="60%" src="/imgs/pileup_right.png">
 </p>
 
